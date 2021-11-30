@@ -121,7 +121,7 @@ pub use server::{accept, accept_with_opts, ServerOptions};
 pub(crate) enum EncoderState {
     Start,
     Head(Cursor<Vec<u8>>),
-    Body(BodyEncoder),
+    Body(BodyEncoder, usize, Option<usize>),
     End,
 }
 

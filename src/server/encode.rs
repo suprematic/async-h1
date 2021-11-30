@@ -38,13 +38,30 @@ impl Read for Encoder {
                     if self.method == Method::Head {
                         EncoderState::End
                     } else {
-                        EncoderState::Body(BodyEncoder::new(self.response.take_body()))
+                        let res_len = self.response.len();
+                        EncoderState::Body(BodyEncoder::new(self.response.take_body()), 0, res_len)
                     }
                 }
 
-                EncoderState::Body(ref mut encoder) => {
-                    read_to_end!(Pin::new(encoder).poll_read(cx, buf));
-                    EncoderState::End
+                EncoderState::Body(ref mut encoder, ref mut n_written, res_len) => {
+                    match Pin::new(encoder).poll_read(cx, buf) {
+                        Poll::Ready(Ok(0)) => {
+                            if let Some(request_len) = res_len {
+                                if *n_written != request_len {
+                                    return Poll::Ready(io::Result::Err(io::Error::new(
+                                        io::ErrorKind::Other,
+                                        "Unexpected end of response body",
+                                    )));
+                                }
+                            }
+                            EncoderState::End
+                        }
+                        Poll::Ready(Ok(n)) if n > 0 => {
+                            *n_written += n;
+                            return Poll::Ready(Ok(n));
+                        }
+                        other => return other,
+                    }
                 }
 
                 EncoderState::End => return Poll::Ready(Ok(0)),
